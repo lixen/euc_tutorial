@@ -46,7 +46,7 @@
 -type response_to()            :: post_id().
 -type response_count()         :: integer().
 -type bin_timestamp()          :: binary(). %% In Solr date format, e.g: "2014-06-06T02:10:35.367Z"
--type msg_timestamp()          :: erlang:timestamp() | bin_timestamp().
+-type msg_timestamp()          :: calendar:datetime() | bin_timestamp().
 -type post()                   :: {root, post_id(), thread_id(), from(), subject(), body(), bin_timestamp()} | {response, post_id(), thread_id(), from(), subject(), body(), bin_timestamp(), response_to()}.
 -type post_list()              :: [post()].
 -type thread_item()            :: {root, post_id(), from(), subject(), body(), bin_timestamp()} | {response, post_id(), from(), subject(), bin_timestamp(), response_to()}.
@@ -350,8 +350,12 @@ set_thread_index_fields(Map, PostId, [{Field, Value} | R]) ->
 
 
 
-timestamp_to_solr_datetime(TimeStamp) ->
-    <<"2014-06-06T02:10:35.367Z">>.
+timestamp_to_solr_datetime(DateTime) ->
+    %% Format into <<"2014-06-06T02:10:35.367Z">>
+    {{Year,Month,Day},{Hour,Min,Sec}} = DateTime,
+    list_to_binary(io_lib:format("~4.10.0B-~2.10.0B-~2.10.0BT~2.10.0B:~2.10.0B:~2.10.0B.000Z",
+        [Year, Month, Day, Hour, Min, Sec])).
+
 
 
 
