@@ -26,8 +26,7 @@
 	    insert_post/6, insert_post/7,
 	    get_post/2,
         get_thread/2,
-        get_threads_by_date/2,
-        get_threads_by_date_range/3]).
+        get_threads_by_date/2]).
 
 -define(DEFAULT_BUCKET_TYPE, <<"maps">>).
 -define(DEFAULT_POST_BUCKET, <<"posts">>).
@@ -48,7 +47,6 @@
 -type bin_timestamp()          :: binary(). %% In Solr date format, e.g: "2014-06-06T02:10:35.367Z"
 -type msg_timestamp()          :: calendar:datetime() | bin_timestamp().
 -type post()                   :: {root, post_id(), thread_id(), from(), subject(), body(), bin_timestamp()} | {response, post_id(), thread_id(), from(), subject(), body(), bin_timestamp(), response_to()}.
--type post_list()              :: [post()].
 -type thread_item()            :: {root, post_id(), from(), subject(), body(), bin_timestamp()} | {response, post_id(), from(), subject(), bin_timestamp(), response_to()}.
 -type thread_item_list()       :: [thread_item()].
 -type thread_index_item()      :: {post_id(), from(), subject(), bin_timestamp()}.
@@ -206,34 +204,6 @@ get_threads_by_date(#state{pid = Pid, bucket_type = T, thread_index_bucket = B},
         {error, Error} ->
             {error, Error}
     end.
-
-%% @doc Get all threads initiated a specific date.
--spec get_threads_by_date_range(state(), calendar:datetime(), calendar:datetime()) -> 
-        {ok, thread_index_item_list()} | {error, term()}.
-get_threads_by_date_range(_State, _FromDate, _EndDate) ->
-    
-
-
-
-
-
-    {ok, []}.
-
-
-
-
-
-
-%% @doc Get all threads initiated a specific date.
--spec search_posts(state(), [term()]) -> 
-        {ok, post_list()} | {error, connection_error}.
-search_posts(_State, _SearchTerms) ->
-    %% Not sure how this works yet...
-    {ok, []}.
-
-
-
-    
 
 %%
 %% Internal Functions
