@@ -22,7 +22,7 @@
 
 -module(euc_tutorial).
 
--export([init/0, init/2, init/3, init/5,
+-export([init/0, init/2, init/4, init/6,
 	    insert_post/6, insert_post/7,
 	    get_post/2,
         get_thread/2,
@@ -32,8 +32,9 @@
 -define(DEFAULT_BUCKET_TYPE, <<"maps">>).
 -define(DEFAULT_POST_BUCKET, <<"posts">>).
 -define(DEFAULT_THREAD_INDEX_BUCKET, <<"thread_index">>).
+-define(DEFAULT_POST_INDEX_BUCKET, <<"post_index">>).
 
--record(state, {host, port, bucket_type, post_bucket, thread_index_bucket, pid}).
+-record(state, {host, port, bucket_type, post_bucket, thread_index_bucket, post_index_bucket, pid}).
 
 -type portnum()                :: non_neg_integer(). %% The TCP port number of the Riak node's Protocol Buffers interface
 -type address()                :: string() | atom() | inet:ip_address(). %% The TCP/IP host name or address of the Riak node
@@ -65,21 +66,22 @@ init() ->
 
 -spec init(address(), portnum()) -> {ok, state()} | {error, term()}.
 init(Host, Port) ->
-    init(Host, Port, ?DEFAULT_BUCKET_TYPE, ?DEFAULT_POST_BUCKET, ?DEFAULT_THREAD_INDEX_BUCKET).
+    init(Host, Port, ?DEFAULT_BUCKET_TYPE, ?DEFAULT_POST_BUCKET, ?DEFAULT_THREAD_INDEX_BUCKET, ?DEFAULT_POST_INDEX_BUCKET).
 
--spec init(binary(), binary(), binary()) -> {ok, state()} | {error, term()}.
-init(BucketType, PostBucket, ThreadIndexBucket) ->
-    init("127.0.0.1", 8087, BucketType, PostBucket, ThreadIndexBucket).
+-spec init(binary(), binary(), binary(), binary()) -> {ok, state()} | {error, term()}.
+init(BucketType, PostBucket, ThreadIndexBucket, PostIndexBucket) ->
+    init("127.0.0.1", 8087, BucketType, PostBucket, ThreadIndexBucket, PostIndexBucket).
 
--spec init(address(), portnum(), binary(), binary(), binary()) -> {ok, state()} | {error, term()}.
-init(Host, Port, BucketType, PostBucket, ThreadIndexBucket) ->
+-spec init(address(), portnum(), binary(), binary(), binary(), binary()) -> {ok, state()} | {error, term()}.
+init(Host, Port, BucketType, PostBucket, ThreadIndexBucket, PostIndexBucket) ->
     case  riakc_pb_socket:start_link("127.0.0.1", 8087) of
         {ok, Pid} ->
             {ok, #state{host = Host, 
                         port = Port, 
                         bucket_type = BucketType, 
                         post_bucket = PostBucket, 
-                        thread_index_bucket = ThreadIndexBucket, 
+                        thread_index_bucket = ThreadIndexBucket,
+                        post_index_bucket = PostIndexBucket, 
                         pid = Pid}};
         {error, Error} ->
             {error, Error}
@@ -97,6 +99,7 @@ insert_post(State, PostId, From, Subject, Body, Date) when is_binary(Date) ->
         {error, Error} ->
             {error, Error};
         _ ->
+            update_post_index(State, PostId, Date),
             update_thread_index(State, PostId, From, Subject, Date)
     end.
 
@@ -118,6 +121,7 @@ insert_post(State, PostId, From, Subject, Body, Date, InResponseTo) when is_bina
                     {error, Error} ->
                         {error, Error};
                     _ ->
+                        update_post_index(State, PostId, Date),
                         update_thread_root(State, TID, PostId, From, Subject, Date, InResponseTo)
                 end
     end.
@@ -320,6 +324,20 @@ set_map_registers(Map, [{K, V} | Rest]) ->
                  fun(R) -> riakc_register:set(V, R) end,
                  Map),
     set_map_registers(NewMap, Rest).
+
+update_post_index(#state{pid = Pid, bucket_type = T, post_index_bucket = B}, PostId, Date) ->
+    D = binary:part(Date, 0, 10),
+    M = binary:part(Date, 0, 7),
+    Map = riakc_map:update(
+        {D, set},
+        fun(A) -> riakc_set:add_element(PostId, A) end, 
+        riakc_map:new()),
+    case riakc_pb_socket:update_type(Pid, {T, B}, M, riakc_map:to_op(Map)) of
+        {error, Error} ->
+            {error, Error};
+        _ ->
+            ok
+    end.
 
 update_thread_root(#state{pid = Pid, bucket_type = T, post_bucket = B}, ThreadId, PostId, From, Subject, Date, InResponseTo) ->
     Map = set_thread_root_response_field(riakc_map:new(), 
