@@ -1,0 +1,15 @@
+%%-*- mode: erlang -*-
+
+{application, euc_tutorial,
+ [
+  {description, "euc_tutorial"},
+  {vsn, git},
+  {modules, []},
+  {registered, []},
+  {applications, [kernel,
+                  stdlib,
+                  crypto,
+                  mochiweb]},
+  {mod, {euc_tutorial, []}},
+  {env, []}
+ ]}.
