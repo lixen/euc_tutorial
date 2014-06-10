@@ -44,14 +44,13 @@
 -type post_id()                :: binary().
 -type thread_id()              :: post_id().
 -type response_to()            :: post_id().
--type response_count()         :: integer().
 -type bin_timestamp()          :: binary(). %% In Solr date format, e.g: "2014-06-06T02:10:35.367Z"
 -type msg_timestamp()          :: calendar:datetime() | bin_timestamp().
 -type post()                   :: {root, post_id(), thread_id(), from(), subject(), body(), bin_timestamp()} | {response, post_id(), thread_id(), from(), subject(), body(), bin_timestamp(), response_to()}.
 -type post_list()              :: [post()].
 -type thread_item()            :: {root, post_id(), from(), subject(), body(), bin_timestamp()} | {response, post_id(), from(), subject(), bin_timestamp(), response_to()}.
 -type thread_item_list()       :: [thread_item()].
--type thread_index_item()      :: {post_id(), from(), subject(), bin_timestamp(), response_count()}.
+-type thread_index_item()      :: {post_id(), from(), subject(), bin_timestamp()}.
 -type thread_index_item_list() :: [thread_index_item()].
 
 %%
@@ -126,7 +125,7 @@ insert_post(State, PostId, From, Subject, Body, Date, InResponseTo) when is_bina
 %% @doc Get individual post.
 -spec get_post(state(), post_id()) -> 
         {ok, post()} | {error, term()} | {error, notfound}.
-get_post(State=#state{pid = Pid, bucket_type = T, post_bucket = B}, PostId) ->
+get_post(#state{pid = Pid, bucket_type = T, post_bucket = B}, PostId) ->
     case riakc_pb_socket:fetch_type(Pid, {T, B}, PostId) of
         {ok, O} ->
             V = riakc_map:value(O),
@@ -162,7 +161,7 @@ get_post(State=#state{pid = Pid, bucket_type = T, post_bucket = B}, PostId) ->
 %% @doc Get individual post.
 -spec get_thread(state(), post_id()) -> 
         {ok, thread_item_list()} | {error, notfound} | {error, term()}.
-get_thread(State=#state{pid = Pid, bucket_type = T, post_bucket = B}, ThreadId) ->
+get_thread(#state{pid = Pid, bucket_type = T, post_bucket = B}, ThreadId) ->
     case riakc_pb_socket:fetch_type(Pid, {T, B}, ThreadId) of
         {ok, O} ->
             V = riakc_map:value(O),
@@ -187,18 +186,33 @@ get_thread(State=#state{pid = Pid, bucket_type = T, post_bucket = B}, ThreadId) 
             {error, Error}
     end.
 
-
+%% @doc Get all threads initiated a specific date.
+-spec get_threads_by_date(state(), calendar:datetime()) -> 
+        {ok, thread_index_item_list()} | {error, term()}.
+get_threads_by_date(#state{pid = Pid, bucket_type = T, thread_index_bucket = B}, {{Y, M, D}, _Time}) ->
+    Date = list_to_binary(io_lib:format("~4.10.0B-~2.10.0B-~2.10.0B",
+        [Y, M, D])),
+    Month = binary:part(Date, 0, 7),
+    case riakc_pb_socket:fetch_type(Pid, {T, B}, Month) of
+        {ok, O} ->
+            V = format_thread_indexes(riakc_map:value(O)),
+            [{P, F, S, X} || {P, F, S, X} <- V, is_match(X, Date)];
+        {error, {notfound,map}} ->
+            {ok, []};
+        {error, Error} ->
+            {error, Error}
+    end.
 
 %% @doc Get all threads initiated a specific date.
--spec get_threads_by_date(state(), binary()) -> 
-        {ok, thread_item_list()} | {error, connection_error}.
-get_threads_by_date(State, Date) ->
-    get_threads_by_date_range(State, Date, Date).
+-spec get_threads_by_date_range(state(), calendar:datetime(), calendar:datetime()) -> 
+        {ok, thread_index_item_list()} | {error, term()}.
+get_threads_by_date_range(_State, _FromDate, _EndDate) ->
+    
 
-%% @doc Get all threads initiated a specific date.
--spec get_threads_by_date_range(state(), binary(), binary()) -> 
-        {ok, thread_item_list()} | {error, connection_error}.
-get_threads_by_date_range(State, FromDate, EndDate) ->
+
+
+
+
     {ok, []}.
 
 
@@ -209,7 +223,7 @@ get_threads_by_date_range(State, FromDate, EndDate) ->
 %% @doc Get all threads initiated a specific date.
 -spec search_posts(state(), [term()]) -> 
         {ok, post_list()} | {error, connection_error}.
-search_posts(State, SearchTerms) ->
+search_posts(_State, _SearchTerms) ->
     %% Not sure how this works yet...
     {ok, []}.
 
@@ -220,6 +234,13 @@ search_posts(State, SearchTerms) ->
 %%
 %% Internal Functions
 %%
+is_match(V, P) ->
+    case binary:matches(V, P) of
+        [] ->
+            false;
+        _ ->
+            true
+    end.
 
 format_responses(V) ->
     case proplists:get_value({<<"responses">>,map}, V) of
@@ -240,7 +261,19 @@ format_responses(List, [{{PostId, map}, V} | Rest]) ->
          proplists:get_value({<<"in_response_to">>, register}, V)}],
     format_responses(R ++ List, Rest).
 
-get_post_thread_id(State=#state{pid = Pid, bucket_type = T, post_bucket = B}, PostId) ->
+format_thread_indexes(V) ->
+    format_thread_indexes([], V). 
+
+format_thread_indexes(List, []) ->
+    List;
+format_thread_indexes(List, [{{PostId, map}, V} | Rest]) ->
+    R = [{PostId,
+          proplists:get_value({<<"from">>, register}, V),
+          proplists:get_value({<<"subject">>, register}, V),
+          proplists:get_value({<<"date">>, register}, V)}],
+    format_thread_indexes(R ++ List, Rest).
+
+get_post_thread_id(#state{pid = Pid, bucket_type = T, post_bucket = B}, PostId) ->
     case riakc_pb_socket:fetch_type(Pid, {T, B}, PostId) of
         {ok, O} ->
             case proplists:get_value({<<"thread_id">>, register}, riakc_map:value(O), undefined) of
@@ -258,7 +291,7 @@ get_post_thread_id(State=#state{pid = Pid, bucket_type = T, post_bucket = B}, Po
 update_post(State, PostId, From, Subject, Body, Date) ->
     update_post(State, PostId, From, Subject, Body, Date, null, null).
 
-update_post(State=#state{pid = Pid, bucket_type = T, post_bucket = B}, PostId, From, Subject, Body, Date, InResponseTo, ThreadId) ->
+update_post(#state{pid = Pid, bucket_type = T, post_bucket = B}, PostId, From, Subject, Body, Date, InResponseTo, ThreadId) ->
     Common = [{<<"from">>, From},
               {<<"date">>, Date},
               {<<"subject">>, Subject},
@@ -267,7 +300,7 @@ update_post(State=#state{pid = Pid, bucket_type = T, post_bucket = B}, PostId, F
     	{null, null} ->
             [{<<"thread_id">>, PostId},
              {<<"thread_root">>, <<"true">>}];
-    	IRT ->
+    	_ ->
     	    [{<<"thread_id">>, ThreadId},
     	     {<<"in_response_to">>, InResponseTo},
              {<<"thread_root">>, <<"false">>}]
@@ -288,7 +321,7 @@ set_map_registers(Map, [{K, V} | Rest]) ->
                  Map),
     set_map_registers(NewMap, Rest).
 
-update_thread_root(State=#state{pid = Pid, bucket_type = T, post_bucket = B}, ThreadId, PostId, From, Subject, Date, InResponseTo) ->
+update_thread_root(#state{pid = Pid, bucket_type = T, post_bucket = B}, ThreadId, PostId, From, Subject, Date, InResponseTo) ->
     Map = set_thread_root_response_field(riakc_map:new(), 
     	                                 PostId,
     	                                 [{<<"from">>, From},
@@ -318,7 +351,7 @@ set_thread_root_response_field(Map, PostId, [{Field, Value} | R]) ->
     set_thread_root_response_field(M, PostId, R).
 
 
-update_thread_index(State=#state{pid = Pid, bucket_type = T, thread_index_bucket = B}, PostId, From, Subject, Date) ->
+update_thread_index(#state{pid = Pid, bucket_type = T, thread_index_bucket = B}, PostId, From, Subject, Date) ->
     Key = binary:part(Date, 0, 7),
     F = [{<<"from">>, From},{<<"subject">>, Subject},{<<"date">>, Date}],
     Map = set_thread_index_fields(riakc_map:new(), PostId, F),
@@ -340,15 +373,6 @@ set_thread_index_fields(Map, PostId, [{Field, Value} | R]) ->
         	        riakc_register:set(Value, C) end, B) end,
         Map),
     set_thread_index_fields(M, PostId, R).
-
-
-%%update_statistics
-
-%%posts
-%%threads
-
-
-
 
 timestamp_to_solr_datetime(DateTime) ->
     %% Format into <<"2014-06-06T02:10:35.367Z">>
