@@ -1,13 +1,23 @@
 
+wget https://raw.githubusercontent.com/basho/yokozuna/develop/priv/default_schema.xml
+
 noglob curl -XPUT -H 'Content-Type: application/xml'  http://localhost:8098/search/schema/post_schema --data-binary @/common/euc_tutorial/post_schema.xml
 curl -i -XPUT http://localhost:8098/search/index/post_index -H 'content-type: application/json' -d '{"schema":"post_schema"}'
 
+### List existing bucket-types 
+
+```
+dev/dev1/bin/riak-admin bucket-type list
+```
 
 dev/dev1/bin/riak-admin bucket-type create maps '{"props":{"datatype":"map", "search_index":"post_index" }}'
+
 dev/dev1/bin/riak-admin bucket-type activate maps
+
 curl -X POST localhost:8098/types/maps/buckets/fooz/datatypes/baz -H"content-type: application/json"  -d '{"update":{"gold_counter":100, "blah_counter": 1, "stone_counter": 50, "foo_set" : { "add_all" : [ "1" ] }}}'
 
 
+### Firing up the REPL with dependencies on runtime path
 
 ```
 ./euc_tutorial
