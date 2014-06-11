@@ -1,0 +1,5 @@
+#!/bin/bash
+
+rebar -C rebar.config clean
+rebar -C rebar.config compile
+erl -pa ebin deps/*/ebin
