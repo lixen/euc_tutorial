@@ -1,8 +1,15 @@
 
+```
 wget https://raw.githubusercontent.com/basho/yokozuna/develop/priv/default_schema.xml
+```
 
+```
 noglob curl -XPUT -H 'Content-Type: application/xml'  http://localhost:8098/search/schema/post_schema --data-binary @/common/euc_tutorial/post_schema.xml
+```
+
+```
 curl -i -XPUT http://localhost:8098/search/index/post_index -H 'content-type: application/json' -d '{"schema":"post_schema"}'
+```
 
 ### List existing bucket-types 
 
@@ -10,12 +17,15 @@ curl -i -XPUT http://localhost:8098/search/index/post_index -H 'content-type: ap
 dev/dev1/bin/riak-admin bucket-type list
 ```
 
+```
 dev/dev1/bin/riak-admin bucket-type create maps '{"props":{"datatype":"map", "search_index":"post_index" }}'
-
+```
+```
 dev/dev1/bin/riak-admin bucket-type activate maps
-
+```
+```
 curl -X POST localhost:8098/types/maps/buckets/fooz/datatypes/baz -H"content-type: application/json"  -d '{"update":{"gold_counter":100, "blah_counter": 1, "stone_counter": 50, "foo_set" : { "add_all" : [ "1" ] }}}'
-
+```
 
 ### Firing up the REPL with dependencies on runtime path
 
@@ -33,24 +43,38 @@ ok
 
 Get the id’s of all the items in the ‘posts' bucket
 
+```
 curl -X GET "localhost:8098/types/maps/buckets/posts/keys?keys=true”
-
+```
 Path must be correct
 
 This produces a binary blob
-% curl -X GET "localhost:8098/types/maps/buckets/posts/keys/P1"
+```
+curl -X GET "localhost:8098/types/maps/buckets/posts/keys/P1"
+```
 
 This gives me the nice JSON representation
 
-% curl -X GET "localhost:8098/types/maps/buckets/posts/datatypes/P1”
+    curl -X GET "localhost:8098/types/maps/buckets/posts/datatypes/P1”
 
 Create a default index on posts.
 
-curl -i -XPUT http://localhost:8098/search/index/posts
+    curl -i -XPUT http://localhost:8098/search/index/posts
+    
+Retrieve the post_schema
 
-curl http://localhost:8098/search/schema/post_schema
+    curl http://localhost:8098/search/schema/post_schema
 
-curl -i -XPUT http://localhost:8098/search/index/post_index -H 'content-type: application/json' -d '{"schema":"post_schema"}'
-curl -i http://localhost:8098/search/index/post_index
-dev/dev1/bin/riak-admin bucket-type update maps '{"props": { "search_index":"post_index" } }'           
-curl 'http://localhost:8098/search/query/post_index?q=*:*'
+
+    curl -i -XPUT http://localhost:8098/search/index/post_index -H 'content-type: application/json' -d '{"schema":"post_schema"}'
+    
+     curl -i http://localhost:8098/search/index/post_index
+     
+Update the maps bucket-type, adding `post_index` as the default `search_index`.
+
+     riak-admin bucket-type update maps '{"props": { "search_index":"post_index" } }'           
+
+
+Perform a wildcard search using `post_index`
+
+    curl 'http://localhost:8098/search/query/post_index?q=*:*'
